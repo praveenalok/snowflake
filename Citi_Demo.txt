@@ -1,0 +1,657 @@
+// CREATE SCHEMA:
+--create schema BANKING_DEMO;
+
+--=========================================================================---
+
+// CREATE SOURCE STG TABLES:
+CREATE OR REPLACE TABLE BANKING_DEMO.Bank_Transactions_Records_STG_1 (
+Date VARCHAR,
+Description VARCHAR,
+Deposits VARCHAR,
+Withdrawls VARCHAR,
+Balance VARCHAR);
+
+CREATE OR REPLACE TABLE BANKING_DEMO.Bank_Transactions_Records_STG_2 (
+Date VARCHAR,
+Description VARCHAR,
+Deposits VARCHAR,
+Withdrawls VARCHAR,
+Balance VARCHAR);
+
+CREATE OR REPLACE TABLE BANKING_DEMO.Credit_Card_Records_STG (
+Card_Type_Code VARCHAR,
+Card_Type_Full_Name VARCHAR,
+Issuing_Bank VARCHAR,
+Card_Number VARCHAR,
+Card_Holder_Name VARCHAR,
+CVV_CVV2 VARCHAR,
+Issue_Date VARCHAR,
+Expiry_Date VARCHAR,
+Billing_Date VARCHAR,
+Card_PIN VARCHAR,
+Credit_Limit VARCHAR);
+
+CREATE OR REPLACE TABLE BANKING_DEMO.Sales_Records_STG (
+Region VARCHAR,
+Country VARCHAR,
+Item_Type VARCHAR,
+Sales_Channel VARCHAR,
+Order_Priority VARCHAR,
+Order_Date VARCHAR,
+Order_ID VARCHAR,
+Ship_Date VARCHAR,
+Units_Sold VARCHAR,
+Unit_Price VARCHAR,
+Unit_Cost VARCHAR,
+Total_Revenue VARCHAR,
+Total_Cost VARCHAR,
+Total_Profit VARCHAR);
+
+--=========================================================================---
+
+// Create External S3 Stage:
+CREATE OR REPLACE STAGE BANKING_DEMO.Demo_Stage URL = 's3://praveenverma/Banking/'
+CREDENTIALS = (AWS_KEY_ID = 'AKIAT5CVXEL6HJAEBGGZ'
+AWS_SECRET_KEY = 'IRsGMVLvM4fGJkHCXJ2xuiKc2xGxlOwxHlS3PiSi');
+
+list @Demo_Stage;
+
+--=========================================================================---
+
+// Direct Data Copy command:
+copy into BANKING_DEMO.Bank_Transactions_Records_STG_1
+  from @Demo_Stage
+  pattern='.*BT Records_1.*.csv';
+  
+copy into BANKING_DEMO.Bank_Transactions_Records_STG_2
+  from @Demo_Stage
+  pattern='.*BT Records_2.*.csv';
+  
+copy into BANKING_DEMO.Credit_Card_Records_STG
+  from @Demo_Stage
+  pattern='.*CC Records.*.csv';
+  
+copy into BANKING_DEMO.Sales_Records_STG
+  from @Demo_Stage
+  pattern='.*Sales Records.*.csv';
+  
+--=========================================================================---
+
+// Data in STG table:
+SELECT * FROM BANKING_DEMO.Bank_Transactions_Records_STG_1;
+SELECT * FROM BANKING_DEMO.Bank_Transactions_Records_STG_2;
+SELECT * FROM BANKING_DEMO.Credit_Card_Records_STG;
+SELECT * FROM BANKING_DEMO.Sales_Records_STG;
+
+delete FROM BANKING_DEMO.Bank_Transactions_Records_STG_1 where DATE='Date' ;
+delete FROM BANKING_DEMO.Bank_Transactions_Records_STG_2 where DATE='Date' ;
+delete FROM BANKING_DEMO.Credit_Card_Records_STG where CARD_TYPE_CODE='Card Type Code' ;
+delete FROM BANKING_DEMO.Sales_Records_STG where REGION='Region' ;
+  
+--=========================================================================---
+
+// CREATE TARGET TABLES:
+CREATE OR REPLACE TABLE BANKING_DEMO.Bank_Transactions_Records (
+Date VARCHAR,
+Description VARCHAR,
+Deposits VARCHAR,
+Withdrawls VARCHAR,
+Balance VARCHAR,
+Load_Source_Name VARCHAR,
+HashKey_CD VARCHAR,
+Load_Date DATE);
+
+CREATE OR REPLACE TABLE BANKING_DEMO.Credit_Card_Records (
+Card_Type_Code VARCHAR,
+Card_Type_Full_Name VARCHAR,
+Issuing_Bank VARCHAR,
+Card_Number VARCHAR,
+Card_Holder_Name VARCHAR,
+CVV_CVV2 VARCHAR,
+Issue_Date VARCHAR,
+Expiry_Date VARCHAR,
+Billing_Date VARCHAR,
+Card_PIN VARCHAR,
+Credit_Limit VARCHAR,
+Load_Source_Name VARCHAR,
+HashKey_CD VARCHAR,
+Load_Date DATE);
+
+CREATE OR REPLACE TABLE BANKING_DEMO.Sales_Records (
+Region VARCHAR,
+Country VARCHAR,
+Item_Type VARCHAR,
+Sales_Channel VARCHAR,
+Order_Priority VARCHAR,
+Order_Date VARCHAR,
+Order_ID VARCHAR,
+Ship_Date VARCHAR,
+Units_Sold VARCHAR,
+Unit_Price VARCHAR,
+Unit_Cost VARCHAR,
+Total_Revenue VARCHAR,
+Total_Cost VARCHAR,
+Total_Profit VARCHAR,
+Load_Source_Name VARCHAR,
+HashKey_CD VARCHAR,
+Load_Date DATE);
+
+--=========================================================================---
+
+// Target Table Direct Insert Load:
+INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Bank_Transactions_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Bank_Transactions_Records 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+  Date, 
+  Description, 
+  Deposits, 
+  Withdrawls, 
+  Balance, 
+  'Bank_Transactions_Records_STG_1' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Date,''),'^',NVL(Description, ''),'^',NVL(Deposits,''),'^',NVL(Withdrawls,''),'^',NVL(Balance,'')
+  )) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Bank_Transactions_Records_STG_1;
+
+INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Bank_Transactions_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Bank_Transactions_Records 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+  Date, 
+  Description, 
+  Deposits, 
+  Withdrawls, 
+  Balance, 
+  'Bank_Transactions_Records_STG_2' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Date,''),'^',NVL(Description,''),'^',NVL(Deposits,''),'^',NVL(Withdrawls,''),'^',NVL(Balance,'')
+  )) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Bank_Transactions_Records_STG_2;
+  
+INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Credit_Card_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Credit_Card_Records 
+  (Card_Type_Code, Card_Type_Full_Name, Issuing_Bank, Card_Number, Card_Holder_Name, CVV_CVV2, Issue_Date, Expiry_Date, Billing_Date, Card_PIN, Credit_Limit, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Card_Type_Code, Card_Type_Full_Name, Issuing_Bank, Card_Number, Card_Holder_Name, CVV_CVV2, Issue_Date, Expiry_Date, Billing_Date, Card_PIN, Credit_Limit, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+    Card_Type_Code, 
+    Card_Type_Full_Name, 
+    Issuing_Bank, 
+    Card_Number, 
+    Card_Holder_Name, 
+    CVV_CVV2, 
+    Issue_Date, 
+    Expiry_Date, 
+    Billing_Date, 
+    Card_PIN, 
+    Credit_Limit, 
+  'Credit_Card_Records_STG' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Card_Type_Code,''),'^',NVL(Card_Type_Full_Name,''),'^',NVL(Issuing_Bank,''),'^',NVL(Card_Number,''),'^',NVL(Card_Holder_Name,''),'^',NVL(CVV_CVV2,''),'^',NVL(Issue_Date,''),'^',NVL(Expiry_Date,''),
+    '^',NVL(Billing_Date,''),'^',NVL(Card_PIN,''),'^',NVL(Credit_Limit,''))) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Credit_Card_Records_STG;
+  
+INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Sales_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Sales_Records 
+  (Region, Country, Item_Type, Sales_Channel, Order_Priority, Order_Date, Order_ID, Ship_Date, Units_Sold, Unit_Price, Unit_Cost, Total_Revenue, Total_Cost, Total_Profit, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Region, Country, Item_Type, Sales_Channel, Order_Priority, Order_Date, Order_ID, Ship_Date, Units_Sold, Unit_Price, Unit_Cost, Total_Revenue, Total_Cost, Total_Profit, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+    Region, 
+    Country, 
+    Item_Type, 
+    Sales_Channel, 
+    Order_Priority, 
+    Order_Date, 
+    Order_ID, 
+    Ship_Date, 
+    Units_Sold, 
+    Unit_Price, 
+    Unit_Cost, 
+    Total_Revenue, 
+    Total_Cost, 
+    Total_Profit,  
+  'Sales_Records_STG' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Region,''),'^',NVL(Country,''),'^',NVL(Item_Type,''),'^',NVL(Sales_Channel,''),'^',NVL(Order_Priority,''),'^',NVL(Order_Date,''),'^',NVL(Order_ID,''),'^',NVL(Ship_Date,''),'^',NVL(Units_Sold,''),'^',NVL(Unit_Price,''),
+    '^',NVL(Unit_Cost,''),'^',NVL(Total_Revenue,''),'^',NVL(Total_Cost,''),'^',NVL(Total_Profit,''))) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Sales_Records_STG;
+
+--=========================================================================---
+
+// CREATE METADATA TABLE:
+CREATE OR REPLACE TABLE BANKING_DEMO.METADATA_TABLE (
+LOAD_TABLE VARCHAR,
+TABLE_TGT VARCHAR,
+TABLE_SRC VARCHAR,
+TABLE_SQL VARCHAR,
+LOAD_SEQ NUMBER,
+LOAD_FLAG VARCHAR,
+RUN_FLAG VARCHAR);
+
+// CREATE SEQUENCE FOR LOGGING:
+CREATE OR REPLACE SEQUENCE BANKING_DEMO.SEQ_LOG_ID START = 1 INCREMENT = 1;
+
+//CREATE LOG TABLE:
+CREATE OR REPLACE TABLE BANKING_DEMO.LOG_TABLE (
+LOG_ID INTEGER,
+LOAD_TABLE VARCHAR,
+LOG_MSG VARCHAR,
+IMPACTED_COUNT VARCHAR,
+LOG_FLAG VARCHAR,
+LOG_TS TIMESTAMP);
+
+--=========================================================================---
+
+// METADATA INSERTS:
+INSERT INTO BANKING_DEMO.METADATA_TABLE VALUES
+('Bank_Transactions_Records', 'BANKING_DEMO.Bank_Transactions_Records', 'BANKING_DEMO.Bank_Transactions_Records_STG_1',  
+ ' INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Bank_Transactions_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Bank_Transactions_Records 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+  Date, 
+  Description, 
+  Deposits, 
+  Withdrawls, 
+  Balance, 
+  ''Bank_Transactions_Records_STG_1'' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Date,''''),''^'',NVL(Description, ''''),''^'',NVL(Deposits,''''),''^'',NVL(Withdrawls,''''),''^'',NVL(Balance,'''')
+  )) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Bank_Transactions_Records_STG_1 ',
+ 1, 'Y', 'Y'),
+ 
+ ('Bank_Transactions_Records', 'BANKING_DEMO.Bank_Transactions_Records', 'BANKING_DEMO.Bank_Transactions_Records_STG_2',  
+ ' INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Bank_Transactions_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Bank_Transactions_Records 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Date, Description, Deposits, Withdrawls, Balance, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+  Date, 
+  Description, 
+  Deposits, 
+  Withdrawls, 
+  Balance, 
+  ''Bank_Transactions_Records_STG_2'' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Date,''''),''^'',NVL(Description, ''''),''^'',NVL(Deposits,''''),''^'',NVL(Withdrawls,''''),''^'',NVL(Balance,'''')
+  )) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Bank_Transactions_Records_STG_2 ',
+ 2, 'Y', 'Y'),
+
+('Credit_Card_Records', 'BANKING_DEMO.Credit_Card_Records', 'BANKING_DEMO.Credit_Card_Records_STG',  
+ ' INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Credit_Card_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Credit_Card_Records 
+  (Card_Type_Code, Card_Type_Full_Name, Issuing_Bank, Card_Number, Card_Holder_Name, CVV_CVV2, Issue_Date, Expiry_Date, Billing_Date, Card_PIN, Credit_Limit, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Card_Type_Code, Card_Type_Full_Name, Issuing_Bank, Card_Number, Card_Holder_Name, CVV_CVV2, Issue_Date, Expiry_Date, Billing_Date, Card_PIN, Credit_Limit, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+    Card_Type_Code, 
+    Card_Type_Full_Name, 
+    Issuing_Bank, 
+    Card_Number, 
+    Card_Holder_Name, 
+    CVV_CVV2, 
+    Issue_Date, 
+    Expiry_Date, 
+    Billing_Date, 
+    Card_PIN, 
+    Credit_Limit, 
+  ''Credit_Card_Records_STG'' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Card_Type_Code,''''),''^'',NVL(Card_Type_Full_Name,''''),''^'',NVL(Issuing_Bank,''''),''^'',NVL(Card_Number,''''),''^'',NVL(Card_Holder_Name,''''),''^'',NVL(CVV_CVV2,''''),''^'',NVL(Issue_Date,''''),''^'',NVL(Expiry_Date,''''),
+    ''^'',NVL(Billing_Date,''''),''^'',NVL(Card_PIN,''''),''^'',NVL(Credit_Limit,''''))) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Credit_Card_Records_STG ',
+ 1, 'Y', 'Y'),
+
+ ('Sales_Records', 'BANKING_DEMO.Sales_Records', 'BANKING_DEMO.Sales_Records_STG',  
+ ' INSERT ALL WHEN (
+  SELECT COUNT (*) FROM BANKING_DEMO.Sales_Records TGT
+  WHERE TGT.HashKey_CD = HashKey_CD_src) = 0
+  THEN INTO BANKING_DEMO.Sales_Records 
+  (Region, Country, Item_Type, Sales_Channel, Order_Priority, Order_Date, Order_ID, Ship_Date, Units_Sold, Unit_Price, Unit_Cost, Total_Revenue, Total_Cost, Total_Profit, Load_Source_Name, HashKey_CD, Load_Date)
+  VALUES 
+  (Region, Country, Item_Type, Sales_Channel, Order_Priority, Order_Date, Order_ID, Ship_Date, Units_Sold, Unit_Price, Unit_Cost, Total_Revenue, Total_Cost, Total_Profit, Load_Source_Name, HashKey_CD_src, Load_Date)
+  SELECT DISTINCT
+    Region, 
+    Country, 
+    Item_Type, 
+    Sales_Channel, 
+    Order_Priority, 
+    Order_Date, 
+    Order_ID, 
+    Ship_Date, 
+    Units_Sold, 
+    Unit_Price, 
+    Unit_Cost, 
+    Total_Revenue, 
+    Total_Cost, 
+    Total_Profit,  
+  ''Sales_Records_STG'' as Load_Source_Name, 
+  MD5(CONCAT(
+    NVL(Region,''''),''^'',NVL(Country,''''),''^'',NVL(Item_Type,''''),''^'',NVL(Sales_Channel,''''),''^'',NVL(Order_Priority,''''),''^'',NVL(Order_Date,''''),''^'',NVL(Order_ID,''''),''^'',NVL(Ship_Date,''''),''^'',NVL(Units_Sold,''''),''^'',NVL(Unit_Price,''''),
+    ''^'',NVL(Unit_Cost,''''),''^'',NVL(Total_Revenue,''''),''^'',NVL(Total_Cost,''''),''^'',NVL(Total_Profit,''''))) as HashKey_CD_src, 
+  current_date as Load_Date
+  FROM BANKING_DEMO.Sales_Records_STG ',
+ 1, 'Y', 'Y');
+ 
+SELECT * FROM BANKING_DEMO.METADATA_TABLE;
+
+--=========================================================================---
+
+// REUSABLE PROCEDURE:
+CREATE OR REPLACE PROCEDURE BANKING_DEMO.LOAD_PROC (LOAD_TABLE VARCHAR)
+    returns string
+    language javascript
+    strict
+    execute as CALLER
+    as
+    $$
+/*
+    Date Created: Dec 31 2020
+    Created by: Praveen K Verma
+    Description: 
+    This Procedure will perform the data load in SnowFlake tables and capture the log steps with stats
+    Log entries and Load stats can be found in table BANKING_DEMO.LOG_TABLE
+    Metadata entries can be found in table BANKING_DEMO.METADATA_TABLE
+*/
+
+// Check if LOAD_TABLE entry exist in BANKING_DEMO.METADATA_TABLE:
+  sql_cmd = " SELECT COUNT (*) FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_TABLE = '" +LOAD_TABLE+ "'";
+  var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+  var rs = stmt.execute ();
+  rs.next();
+  var row_count = rs.getColumnValue(1);
+      if (row_count == 0)
+      {
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'ERROR: No entry for " +LOAD_TABLE+ " in BANKING_DEMO.METADATA_TABLE', 'N/A', 'E', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+// To Fail ControlM Job:
+  sql_cmd = " SELECT * FROM WHERE 1=2" ;
+  var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+  var rs = stmt.execute ();
+  rs.next();
+  var row_count_1 = rs.getColumnValue (1);
+  return "Failed " ;
+      }
+
+// Update RUN_FLAG in BANKING_DEMO.METADATA_TABLE:
+  sql_cmd = " UPDATE BANKING_DEMO.METADATA_TABLE SET RUN_FLAG = 'N' WHERE LOAD_TABLE = '" +LOAD_TABLE+ "'";
+  snowflake.execute( {sqlText: sql_cmd} );
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'UPDATED: RUN_FLAG as N for " +LOAD_TABLE+ " in BANKING_DEMO.METADATA_TABLE', 'N/A', 'I', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+
+// Check if all inserts has been executed:
+  sql_cmd = " SELECT COUNT (*) FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_TABLE = '" +LOAD_TABLE+ "' AND RUN_FLAG = 'N'";
+  var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+  var rs = stmt.execute ();
+  rs.next();
+  var row_count_loop = rs.getColumnValue(1);
+    while (row_count_loop!=0)  
+    {
+  sql_cmd = " SELECT COUNT (*) FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_TABLE = '" +LOAD_TABLE+ "' AND RUN_FLAG = 'N'";
+  var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+  var rs = stmt.execute ();
+  rs.next();
+  var row_count = rs.getColumnValue(1);
+  if (rs.getColumnValue(1) == '0')
+        {
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'COMPLETED: ALL INSERT EXECUTED for " +LOAD_TABLE+ "', 'N/A', 'I', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+      return "Succeeded" ;   
+        }
+
+// Get the details from BANKING_DEMO.METADATA_TABLE based on LOAD_TABLE name:
+  sql_cmd = " SELECT TABLE_TGT, TABLE_SRC, TABLE_SQL, UPPER(LOAD_FLAG) AS LOAD_FLAG, LOAD_SEQ FROM (SELECT TABLE_TGT, TABLE_SRC, TABLE_SQL, LOAD_FLAG, LOAD_SEQ, RANK () OVER (PARTITION BY LOAD_TABLE ORDER BY LOAD_SEQ) AS RANK FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_TABLE = '" +LOAD_TABLE+ "' AND RUN_FLAG = 'N') WHERE RANK = 1" ;
+  var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+  var rs = stmt.execute ();
+  rs.next();
+  var TABLE_TGT = rs.getColumnValue (1);
+  var TABLE_SRC = rs.getColumnValue (2);
+  var TABLE_SQL = rs.getColumnValue (3); 
+  var LOAD_FLAG = rs.getColumnValue (4); 
+  var LOAD_SEQ  = rs.getColumnValue (5);
+
+// Check if LOAD_FLAG in metadata table set to N:
+  if (LOAD_FLAG == 'N')
+        {
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'EXCLUDED: LOAD_FLAG in BANKING_DEMO.LOG_TABLE set to N for " +LOAD_TABLE+ ", LOAD_SEQ: " +LOAD_SEQ+ "' , 'N/A', 'W', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+// Update RUN_FLAG in metadata table:
+    sql_cmd = " UPDATE BANKING_DEMO.METADATA_TABLE SET RUN_FLAG = 'Y' WHERE LOAD_TABLE = '" +LOAD_TABLE+ "' AND LOAD_SEQ = " +LOAD_SEQ+ " ";
+    snowflake.execute( {sqlText: sql_cmd} ); 
+        }
+
+  else
+  {
+    //{ 
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'SELECTED: " +LOAD_TABLE+ " for data load, LOAD_SEQ: " +LOAD_SEQ+ "' , 'N/A' , 'I', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+
+
+// Actual Data Load and Load Stats Collection:
+      try
+{
+
+// Before Load Row Count in Target Table:
+    sql_cmd = "SELECT COUNT (*) FROM "+TABLE_TGT+" ";
+    var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+    var rs = stmt.execute ();
+    rs.next();
+    var pre_load_count = rs.getColumnValue (1);
+    sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'START: Data load for " +TABLE_TGT+ ", LOAD_SEQ: " +LOAD_SEQ+ "', 'Initial Row Count: " +pre_load_count+ "', 'I', CURRENT_TIMESTAMP) ";
+    snowflake.execute( {sqlText: sql_cmd} );
+
+ // Actual Data Load:
+    snowflake.execute( {sqlText: TABLE_SQL} );
+
+// After Load Row Count in Target Table:
+    sql_cmd = "SELECT COUNT (*) FROM "+TABLE_TGT+" ";
+    var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+    var rs = stmt.execute ();
+    rs.next();
+    var post_load_count = rs.getColumnValue (1);
+
+// Net Load Row Count in Target Table:
+    sql_cmd = "SELECT " +post_load_count+ " - " +pre_load_count+ " ";
+    var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+    var rs = stmt.execute ();
+    rs.next();
+    var row_count = rs.getColumnValue (1);
+    sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'END: Data load for " +TABLE_TGT+ ", LOAD_SEQ: " +LOAD_SEQ+ "', 'Added Row Count: " +row_count+ "', 'I', CURRENT_TIMESTAMP) ";
+    snowflake.execute( {sqlText: sql_cmd} );
+
+// Update RUN_FLAG in metadata table:
+    sql_cmd = " UPDATE BANKING_DEMO.METADATA_TABLE SET RUN_FLAG = 'Y' WHERE LOAD_TABLE = '" +LOAD_TABLE+ "' AND LOAD_SEQ = " +LOAD_SEQ+ " ";
+    snowflake.execute( {sqlText: sql_cmd} );  
+    sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'UPDATED: RUN_FLAG as Y for " +LOAD_TABLE+ " FOR LOAD_SEQ: " +LOAD_SEQ+ " in BANKING_DEMO.METADATA_TABLE', 'Final Row Count: " +post_load_count+ "', 'I', CURRENT_TIMESTAMP) ";
+    snowflake.execute( {sqlText: sql_cmd} );  
+}
+
+// Error Collection:
+    catch (err)
+    {
+      sql_cmd = " INSERT INTO BANKING_DEMO.LOG_TABLE VALUES (BANKING_DEMO.SEQ_LOG_ID.NEXTVAL, '" +LOAD_TABLE+ "', 'FAIL: Data load for " +TABLE_TGT+ ", LOAD_SEQ: " +LOAD_SEQ+ "', 'N/A' , 'E', CURRENT_TIMESTAMP) ";
+      snowflake.execute( {sqlText: sql_cmd} );
+
+// To Fail ControlM Job:
+    sql_cmd = " SELECT * FROM WHERE 1=2" ;
+    var stmt = snowflake.createStatement ( {sqlText: sql_cmd} );
+    var rs = stmt.execute ();
+    rs.next();
+    var row_count = rs.getColumnValue (1);
+    return "Failed: " + err ;
+      }
+      //}
+      }
+      }
+      $$
+      ;
+
+---=======================================================================================================================================---
+
+//Truncate any existing data before load:
+TRUNCATE TABLE BANKING_DEMO.Bank_Transactions_Records; 
+TRUNCATE TABLE BANKING_DEMO.Credit_Card_Records; 
+TRUNCATE TABLE BANKING_DEMO.Sales_Records;
+
+//MetaData Table Entry:
+SELECT * FROM BANKING_DEMO.METADATA_TABLE;
+
+//Log Table Entry:
+SELECT * FROM BANKING_DEMO.LOG_TABLE ORDER BY 1;
+
+//Target table query:
+Select * from BANKING_DEMO.Bank_Transactions_Records; 
+Select * from BANKING_DEMO.Credit_Card_Records; 
+Select * from BANKING_DEMO.Sales_Records;
+
+---=======================================================================================================================================---
+
+// CASE 1: Load Data from Staging table to Target tables:
+CALL BANKING_DEMO.LOAD_PROC ('Bank_Transactions_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Credit_Card_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Sales_Records');
+
+SELECT * FROM BANKING_DEMO.LOG_TABLE ORDER BY 1;
+
+// CASE 2: Reload same source Data from Staging table to Target tables:
+CALL BANKING_DEMO.LOAD_PROC ('Bank_Transactions_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Credit_Card_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Sales_Records');
+
+SELECT * FROM BANKING_DEMO.LOG_TABLE where LOG_ID > 22 ORDER BY 1;
+
+// CASE 3: Skip load for selected SQLs/Table:
+UPDATE BANKING_DEMO.METADATA_TABLE SET LOAD_FLAG = 'N' WHERE LOAD_TABLE = 'Bank_Transactions_Records' AND LOAD_SEQ = 1;
+CALL BANKING_DEMO.LOAD_PROC ('Bank_Transactions_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Credit_Card_Records');
+CALL BANKING_DEMO.LOAD_PROC ('Sales_Records');
+
+SELECT * FROM BANKING_DEMO.LOG_TABLE where LOG_ID > 44 ORDER BY 1;
+
+// CASE 4: Try passing wrong table name for data laod:
+CALL BANKING_DEMO.LOAD_PROC ('Employee_Information');
+
+SELECT * FROM BANKING_DEMO.LOG_TABLE where LOG_ID > 60 ORDER BY 1;
+
+---=======================================================================================================================================---
+SELECT * FROM BANKING_DEMO.LOAD_STATS_VIEW;
+
+CREATE OR REPLACE VIEW BANKING_DEMO.LOAD_STATS_VIEW AS
+SELECT
+CURR_INI.LOAD_TABLE AS Table_Name,
+CURR_END.LOG_TS AS Current_Run_Date,
+PREV_END.LOG_TS AS Previous_Run_Date,
+CURR_FINAL.Row_Count AS Current_Row_Count,
+PREV_FINAL.Row_Count AS Previous_Row_Count,
+TIMESTAMPDIFF(second, CURR_START.LOG_TS, CURR_END.LOG_TS)||' seconds' AS CURR_RUN_TIME,
+TIMESTAMPDIFF(second, PREV_START.LOG_TS, PREV_END.LOG_TS)||' seconds' AS PREV_RUN_TIME,
+//CASE WHEN CURR_INI.Row_Count = 0 THEN ROUND (100*(NVL((CURR_FINAL.Row_Count - CURR_INI.Row_Count),1) / 1))||' %'
+CASE WHEN CURR_INI.Row_Count = 0 THEN '100 %'
+ELSE ROUND (100*(NVL((CURR_FINAL.Row_Count - CURR_INI.Row_Count),1) / NVL(CURR_INI.Row_Count,1)))||' %'
+END AS Change_Percentage,
+CASE WHEN PREV_FINAL.Row_Count = CURR_INI.Row_Count THEN 'N' ELSE 'Y' END AS Manual_Prior_Run_Flag
+FROM
+            
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'START: Data load%SEQ: 1%') A
+WHERE RANK = 1) CURR_INI, 
+
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'UPDATED: RUN_FLAG as N for%') A
+WHERE RANK = 1) CURR_START,
+
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'COMPLETED: ALL INSERT EXECUTED for%') A
+WHERE RANK = 1) CURR_END,
+
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'UPDATED: RUN_FLAG as N for%') A
+WHERE RANK = 2) PREV_START,
+
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'COMPLETED: ALL INSERT EXECUTED for%') A
+WHERE RANK = 2) PREV_END,
+    
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'UPDATED:%SEQ: '||M.LOAD_SEQ||'%') A
+WHERE RANK = 1) CURR_FINAL,  
+            
+(SELECT LOAD_TABLE, Row_Count, LOG_TS FROM (
+SELECT L.LOAD_TABLE, SPLIT_PART(L.IMPACTED_COUNT, ':', -1) AS Row_Count, L.LOG_TS, ROW_NUMBER () OVER (PARTITION BY L.LOAD_TABLE ORDER BY L.LOG_TS DESC) AS RANK
+FROM BANKING_DEMO.LOG_TABLE L
+INNER JOIN
+(SELECT LOAD_TABLE, MAX(LOAD_SEQ) AS LOAD_SEQ FROM BANKING_DEMO.METADATA_TABLE WHERE LOAD_FLAG = 'Y' GROUP BY LOAD_TABLE) M
+ON L.LOAD_TABLE = M.LOAD_TABLE
+WHERE L.LOG_MSG LIKE 'UPDATED:%SEQ: '||M.LOAD_SEQ||'%') A
+WHERE RANK = 2) PREV_FINAL
+            
+WHERE CURR_INI.LOAD_TABLE = CURR_FINAL.LOAD_TABLE
+AND CURR_INI.LOAD_TABLE = PREV_FINAL.LOAD_TABLE
+AND CURR_START.LOAD_TABLE = PREV_FINAL.LOAD_TABLE
+AND CURR_END.LOAD_TABLE = PREV_FINAL.LOAD_TABLE
+AND PREV_START.LOAD_TABLE = PREV_FINAL.LOAD_TABLE
+AND PREV_END.LOAD_TABLE = PREV_FINAL.LOAD_TABLE;
+
+---=======================================================================================================================================---
